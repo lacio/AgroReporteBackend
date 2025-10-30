@@ -92,7 +92,7 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.qrText}>Escanea este QR para abrir la app web</Text>
           <Image
             style={styles.qrCode}
-            source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=http://localhost:8081' }}
+            source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://agroreporte-client-hxdaxr3bw-fabiolacio-2367s-projects.vercel.app/' }}
           />
         </View>
       </View>

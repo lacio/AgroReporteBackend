@@ -26,7 +26,17 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
 // Middleware
-app.use(cors());
+const corsOptions = {
+  origin: [
+    'http://localhost:3000', // For local development
+    'https://agroreporte-client-hxdaxr3bw-fabiolacio-2367s-projects.vercel.app', // Vercel frontend
+  ],
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true, // Allow cookies to be sent
+  optionsSuccessStatus: 204, // For preflight requests
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' })); // Aumentar límite para las imágenes en base64
 
 // Endpoint para obtener todos los reportes
@@ -99,6 +109,8 @@ app.post('/reports', async (req, res) => {
           <p>${report.description}</p>
           <p><strong>Estado:</strong> ${newReport.status}</p>
           <p><strong>Fecha:</strong> ${new Date(newReport.timestamp).toLocaleString()}</p>
+          <br>
+          <p><em>Este es un correo generado automáticamente. No es necesario responder a este mensaje.</em></p>
         `,
         attachments: [],
       };

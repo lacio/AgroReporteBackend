@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Provider as PaperProvider, DefaultTheme, Snackbar } from 'react-native-paper';
@@ -42,31 +43,33 @@ export default function App() {
   return (
     <PaperProvider theme={theme}>
       <SyncProvider>
-        <NavigationContainer>
-          <Stack.Navigator
-            initialRouteName="Home"
-            screenOptions={{
-              headerStyle: {
-                backgroundColor: theme.colors.primary,
-              },
-              headerTintColor: '#fff',
-              headerTitleStyle: {
-                fontWeight: 'bold',
-              },
-            }}
-          >
-            <Stack.Screen
-              name="Home"
-              component={HomeScreen}
-              options={{ title: 'Reporte de Incidentes' }}
-            />
-            <Stack.Screen
-              name="NewReport"
-              component={NewReportScreen}
-              options={{ title: 'Nuevo Reporte' }}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
+        <View style={{ flex: 1 }}>
+          <NavigationContainer>
+            <Stack.Navigator
+              initialRouteName="Home"
+              screenOptions={{
+                headerStyle: {
+                  backgroundColor: theme.colors.primary,
+                },
+                headerTintColor: '#fff',
+                headerTitleStyle: {
+                  fontWeight: 'bold',
+                },
+              }}
+            >
+              <Stack.Screen
+                name="Home"
+                component={HomeScreen}
+                options={{ title: 'Reporte de Incidentes' }}
+              />
+              <Stack.Screen
+                name="NewReport"
+                component={NewReportScreen}
+                options={{ title: 'Nuevo Reporte' }}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </View>
       </SyncProvider>
     </PaperProvider>
   );

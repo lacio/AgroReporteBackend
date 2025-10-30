@@ -6,7 +6,7 @@ const getApiUrl = () => {
   // En producción, usa una URL fija
   if (!__DEV__) {
     // IMPORTANTE: Reemplaza esta URL con la URL de tu backend desplegado
-    const productionApiUrl = 'https://agroreporte-backend.herokuapp.com'; // Ejemplo
+    const productionApiUrl = 'https://agroreportebackend-production.up.railway.app';
     console.log("Usando API_URL de producción:", productionApiUrl);
     return productionApiUrl;
   }
