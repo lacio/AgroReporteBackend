@@ -107,6 +107,9 @@ app.post('/reports', async (req, res) => {
       status: 'Pendiente de revisión',
     };
 
+    // DEBUG: Imprimir el objeto exacto que se enviará a Firestore
+    console.log("DEBUG: Objeto a guardar en Firestore:", JSON.stringify(newReport, null, 2));
+
     const docRef = await addDoc(collection(db, 'reports'), newReport);
     console.log('Reporte recibido y guardado con ID:', docRef.id);
 
