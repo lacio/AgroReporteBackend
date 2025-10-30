@@ -107,6 +107,9 @@ app.post('/reports', async (req, res) => {
       status: 'Pendiente de revisión',
     };
 
+    // DEBUG: Eliminar temporalmente el campo de imágenes para aislar el problema
+    delete newReport.images;
+
     // DEBUG: Imprimir el objeto exacto que se enviará a Firestore
     console.log("DEBUG: Objeto a guardar en Firestore:", JSON.stringify(newReport, null, 2));
 
