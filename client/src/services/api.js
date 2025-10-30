@@ -35,12 +35,8 @@ const getApiUrl = () => {
   return productionApiUrl;
 };
 
-const API_URL = getApiUrl();
-
-console.log("Conectando a la API en:", API_URL);
-
 const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: getApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
