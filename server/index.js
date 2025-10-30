@@ -108,7 +108,7 @@ app.post('/reports', async (req, res) => {
     };
 
     // DEBUG: Eliminar temporalmente el campo de imágenes para aislar el problema
-    delete newReport.images;
+    //delete newReport.images;
 
     // DEBUG: Imprimir el objeto exacto que se enviará a Firestore
     console.log("DEBUG: Objeto a guardar en Firestore:", JSON.stringify(newReport, null, 2));
@@ -117,11 +117,11 @@ app.post('/reports', async (req, res) => {
     console.log('Reporte recibido y guardado con ID:', docRef.id);
 
     // Envío de correo electrónico
-    const recipient = recipientMap[report.category];
-    console.log('🔍 Categoría recibida:', report.category);
-    console.log('📬 Destinatario resuelto:', recipientMap[report.category]);
+    const recipient = recipientMap[newReport.category];
+    console.log('🔍 Categoría recibida:', newReport.category);
+    console.log('📬 Destinatario resuelto:', recipientMap[newReport.category]);
     // === DIAGNÓSTICO TEMPORAL ===
-    console.log("🔍 DEBUG: report.category =", JSON.stringify(report.category));
+    console.log("🔍 DEBUG: report.category =", JSON.stringify(newReport.category));
     console.log("🔍 DEBUG: recipientMap =", recipientMap);
     
     console.log("🔍 DEBUG: recipient encontrado =", recipient);
@@ -130,15 +130,15 @@ app.post('/reports', async (req, res) => {
       const mailOptions = {
         from: process.env.SMTP_FROM || 'reportes@agrocentro.com.bo', // Remitente
         to: recipient,
-        subject: `Nuevo Reporte de Incidente: ${report.title}`,
+        subject: `Nuevo Reporte de Incidente: ${newReport.title}`,
         html: `
           <h1>Nuevo Reporte de Incidente</h1>
-          <p><strong>Categoría:</strong> ${report.category}</p>
-          <p><strong>Título:</strong> ${report.title}</p>
-          <p><strong>Reportado por:</strong> ${report.reporterName}</p>
-          <p><strong>Ubicación:</strong> ${report.location}</p>
+          <p><strong>Categoría:</strong> ${newReport.category}</p>
+          <p><strong>Título:</strong> ${newReport.title}</p>
+          <p><strong>Reportado por:</strong> ${newReport.reporterName}</p>
+          <p><strong>Ubicación:</strong> ${newReport.location}</p>
           <p><strong>Descripción:</strong></p>
-          <p>${report.description}</p>
+          <p>${newReport.description}</p>
           <p><strong>Estado:</strong> ${newReport.status}</p>
           <p><strong>Fecha:</strong> ${new Date(newReport.timestamp).toLocaleString()}</p>
           <br>
