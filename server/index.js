@@ -148,7 +148,7 @@ app.post('/reports', async (req, res) => {
       };
 
       // Adjuntar imágenes si existen
-      if (report.images && Array.isArray(report.images) && report.images.length > 0) {
+      if (report.images && Array.isArray(newReport.images) && newReport.images.length > 0) {
         mailOptions.attachments = report.images.map((base64Image, index) => ({
           filename: `incidente-${index + 1}.jpg`,
           content: base64Image,
