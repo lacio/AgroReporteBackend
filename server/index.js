@@ -82,12 +82,31 @@ const recipientMap = {
 // Endpoint para crear un nuevo reporte
 app.post('/reports', async (req, res) => {
   try {
-    const report = req.body;
+    // Desestructura y sanitiza los datos del cuerpo de la petición
+    const {
+      title,
+      description,
+      location,
+      category,
+      priority,
+      images,
+      reporterName,
+      isAnonymous
+    } = req.body;
+
     const newReport = {
-      ...report,
+      title: title || '',
+      description: description || '',
+      location: location || '',
+      category: category || 'otros',
+      priority: priority || 'normal',
+      images: images || [],
+      reporterName: reporterName || (isAnonymous ? 'Anónimo' : ''),
+      isAnonymous: !!isAnonymous, // Asegura que sea un booleano
       timestamp: new Date().toISOString(),
       status: 'Pendiente de revisión',
     };
+
     const docRef = await addDoc(collection(db, 'reports'), newReport);
     console.log('Reporte recibido y guardado con ID:', docRef.id);
 
