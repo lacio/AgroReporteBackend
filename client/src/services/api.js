@@ -3,32 +3,36 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 
 const getApiUrl = () => {
-  // En producción, usa una URL fija
-  if (!__DEV__) {
-    // IMPORTANTE: Reemplaza esta URL con la URL de tu backend desplegado
-    const productionApiUrl = 'https://agroreportebackend-production.up.railway.app';
-    console.log("Usando API_URL de producción:", productionApiUrl);
-    return productionApiUrl;
+  // En desarrollo, usa la dirección del host que ejecuta Metro Bundler o fallback local
+  if (__DEV__) {
+    if (Constants.manifest && Constants.manifest.debuggerHost) {
+      const localIp = Constants.manifest.debuggerHost.split(':')[0];
+      const apiUrl = `http://${localIp}:3000`;
+      console.log("Usando API_URL local (DEV):", apiUrl);
+      return apiUrl;
+    }
+    const fallbackUrl = 'http://localhost:3000';
+    console.log("Usando API_URL de fallback (DEV):", fallbackUrl);
+    return fallbackUrl;
   }
 
-  // Si se define una URL de API pública (ej. para ngrok), úsala
+  // En producción
+  // Prioriza la variable de entorno si está definida
   if (process.env.EXPO_PUBLIC_API_URL) {
-    console.log("Usando API_URL desde variable de entorno:", process.env.EXPO_PUBLIC_API_URL);
+    console.log("Usando API_URL desde variable de entorno (PROD):", process.env.EXPO_PUBLIC_API_URL);
     return process.env.EXPO_PUBLIC_API_URL;
   }
-
-  // En desarrollo, usa la dirección del host que ejecuta Metro Bundler
-  if (Constants.manifest && Constants.manifest.debuggerHost) {
-    const localIp = Constants.manifest.debuggerHost.split(':')[0];
-    const apiUrl = `http://${localIp}:3000`;
-    console.log("Usando API_URL local:", apiUrl);
-    return apiUrl;
-  }
   
-  // Fallback para desarrollo si todo lo demás falla
-  const fallbackUrl = 'http://localhost:3000';
-  console.log("Usando API_URL de fallback:", fallbackUrl);
-  return fallbackUrl; 
+  // Fallback a la configuración en app.json si la variable de entorno no está
+  if (Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL) {
+    console.log("Usando API_URL desde app.json (PROD):", Constants.expoConfig.extra.EXPO_PUBLIC_API_URL);
+    return Constants.expoConfig.extra.EXPO_PUBLIC_API_URL;
+  }
+
+  // Si no hay variable de entorno, usa la URL fija de producción
+  const productionApiUrl = 'https://agroreportebackend-production.up.railway.app';
+  console.log("Usando API_URL fija de producción (PROD):", productionApiUrl);
+  return productionApiUrl;
 };
 
 const API_URL = getApiUrl();

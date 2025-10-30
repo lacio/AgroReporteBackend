@@ -27,6 +27,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
+      "EXPO_PUBLIC_API_URL": "https://agroreportebackend-production.up.railway.app/",
       "eas": {
         "projectId": "e3c89e6e-4957-4dee-bf08-e8a0f9394df9"
       }
