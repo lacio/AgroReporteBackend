@@ -27,10 +27,17 @@ const db = getFirestore(firebaseApp);
 
 // Middleware
 const corsOptions = {
-  origin: [
-    'http://localhost:3000', // For local development
-    'https://agroreporte-client-18nf4oe7z-fabiolacio-2367s-projects.vercel.app', // Vercel frontend
-  ],
+  origin: (origin, callback) => {
+    // Expresión regular que coincide con las URLs de Vercel para este proyecto y localhost.
+    const allowedOriginsRegex = /^https:\/\/agroreporte-client.*\.vercel\.app$/;
+    const isAllowed = !origin || origin.startsWith('http://localhost') || allowedOriginsRegex.test(origin);
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true, // Allow cookies to be sent
   optionsSuccessStatus: 204, // For preflight requests
