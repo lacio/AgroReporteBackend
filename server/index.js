@@ -29,7 +29,7 @@ const db = getFirestore(firebaseApp);
 const corsOptions = {
   origin: [
     'http://localhost:3000', // For local development
-    'https://agroreporte-client-hxdaxr3bw-fabiolacio-2367s-projects.vercel.app', // Vercel frontend
+    'https://agroreporte-client-18nf4oe7z-fabiolacio-2367s-projects.vercel.app', // Vercel frontend
   ],
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   credentials: true, // Allow cookies to be sent

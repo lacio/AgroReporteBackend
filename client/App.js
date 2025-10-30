@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { View } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Platform, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Provider as PaperProvider, DefaultTheme, Snackbar } from 'react-native-paper';
@@ -40,6 +40,25 @@ const SyncProvider = ({ children }) => {
 
 export default function App() {
   console.log("🔥 API_URL:", process.env.EXPO_PUBLIC_API_URL); // Added for verification
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const style = document.createElement('style');
+      style.textContent = `
+        html, body, #root {
+          height: 100%;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+        }
+        #root {
+          display: flex;
+          flex-direction: column;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   return (
     <PaperProvider theme={theme}>
       <SyncProvider>
