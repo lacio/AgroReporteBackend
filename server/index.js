@@ -59,18 +59,8 @@ app.get('/reports', async (req, res) => {
   }
 });
 
-const nodemailer = require('nodemailer');
-
-// Configuración de Nodemailer (asegúrate de tener estas variables en tu .env)
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const { Resend } = require('resend');
+const resend = new Resend('re_dRUfz3Dt_56tZrD1VxaqKrKdqhvzDyByR');
 
 const recipientMap = {
   'servicios-generales': 'screspo@agrocentro.com.bo',
@@ -128,7 +118,7 @@ app.post('/reports', async (req, res) => {
 // === FIN DIAGNÓSTICO ===
     if (recipient) {
       const mailOptions = {
-        from: process.env.SMTP_FROM || 'reportes@agrocentro.com.bo', // Remitente
+        from: 'onboarding@resend.dev', // Remitente
         to: recipient,
         subject: `Nuevo Reporte de Incidente: ${newReport.title}`,
         html: `
@@ -149,27 +139,30 @@ app.post('/reports', async (req, res) => {
 
       // Adjuntar imágenes si existen
       if (newReport.images && Array.isArray(newReport.images) && newReport.images.length > 0) {
-        mailOptions.attachments = report.images.map((base64Image, index) => ({
+        mailOptions.attachments = newReport.images.map((base64Image, index) => ({
           filename: `incidente-${index + 1}.jpg`,
-          content: base64Image,
-          encoding: 'base64',
-          cid: `incidente-imagen-${index}` // content-id
+          content: base64Image.split(',')[1], // remove base64 prefix
         }));
           // Opcional: Incrustar la primera imagen en el HTML
         mailOptions.html += '<h2>Imágenes Adjuntas:</h2>';
-        mailOptions.attachments.forEach((att, index) => {
-            mailOptions.html += `<p><strong>Imagen ${index + 1}:</strong></p><img src="cid:${att.cid}" alt="${att.filename}" style="max-width: 400px; height: auto;"/>`;
+        newReport.images.forEach((base64Image, index) => {
+            mailOptions.html += `<p><strong>Imagen ${index + 1}:</strong></p><img src="${base64Image}" alt="incidente-${index + 1}.jpg" style="max-width: 400px; height: auto;"/>`;
         });
       }
 
 
       // Envía el correo
-      transporter.sendMail(mailOptions, (error, info) => {
+      try {
+        const { data, error } = await resend.emails.send(mailOptions);
+
         if (error) {
-          return console.log('Error al enviar el correo:', error);
+          return console.error({ error });
         }
-        console.log('Correo enviado:', info.response);
-      });
+
+        console.log({ data });
+      } catch (error) {
+        console.error(error);
+      }
     }
 
     res.status(201).json({ id: docRef.id, ...newReport });
