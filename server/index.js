@@ -6,7 +6,7 @@ const cors = require('cors');
 require('dotenv').config(); // Cargar variables de entorno
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Firebase Configuration
 const { initializeApp } = require("firebase/app");
@@ -46,6 +46,11 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' })); // Aumentar límite para las imágenes en base64
 
+// Endpoint raíz para Health Check (importante para Railway/deployments)
+app.get('/', (req, res) => {
+  res.send('AgroReporte Backend is running correctly! 🚀');
+});
+
 // Endpoint para obtener todos los reportes
 app.get('/reports', async (req, res) => {
   try {
@@ -60,7 +65,7 @@ app.get('/reports', async (req, res) => {
 });
 
 const { Resend } = require('resend');
-const resend = new Resend('re_dRUfz3Dt_56tZrD1VxaqKrKdqhvzDyByR');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const recipientMap = {
   'servicios-generales': 'screspo@agrocentro.com.bo',
