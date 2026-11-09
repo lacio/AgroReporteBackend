@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Platform, StyleSheet } from 'react-native';
+import { Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Provider as PaperProvider, DefaultTheme, Snackbar } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
 import HomeScreen from './src/screens/HomeScreen';
 import NewReportScreen from './src/screens/NewReportScreen';
 import { SyncContext } from './src/context/SyncContext';
@@ -38,21 +40,45 @@ const SyncProvider = ({ children }) => {
   );
 };
 
+// ... (SyncProvider definition remains same)
+
 export default function App() {
-  console.log("🔥 API_URL:", process.env.EXPO_PUBLIC_API_URL); // Added for verification
+  console.log("🔥 API_URL:", process.env.EXPO_PUBLIC_API_URL);
+
+
+  useFonts({
+    ...MaterialCommunityIcons.font,
+  });
+
   useEffect(() => {
     if (Platform.OS === 'web') {
+      // Add viewport meta tag for mobile responsiveness
+      const viewport = document.querySelector('meta[name="viewport"]');
+      if (!viewport) {
+        const meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes';
+        document.head.appendChild(meta);
+      }
+
       const style = document.createElement('style');
       style.textContent = `
-        html, body, #root {
-          height: 100%;
+        * {
+          box-sizing: border-box;
+        }
+        html, body {
           margin: 0;
           padding: 0;
-          overflow: hidden;
+          width: 100%;
+          height: 100%;
+        }
+        body {
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
         }
         #root {
-          display: flex;
-          flex-direction: column;
+          min-height: 100%;
+          height: auto;
         }
       `;
       document.head.appendChild(style);
@@ -60,35 +86,38 @@ export default function App() {
   }, []);
 
   return (
-    <PaperProvider theme={theme}>
+    <PaperProvider
+      theme={theme}
+      settings={{
+        icon: props => <MaterialCommunityIcons {...props} />,
+      }}
+    >
       <SyncProvider>
-        <View style={{ flex: 1 }}>
-          <NavigationContainer>
-            <Stack.Navigator
-              initialRouteName="Home"
-              screenOptions={{
-                headerStyle: {
-                  backgroundColor: theme.colors.primary,
-                },
-                headerTintColor: '#fff',
-                headerTitleStyle: {
-                  fontWeight: 'bold',
-                },
-              }}
-            >
-              <Stack.Screen
-                name="Home"
-                component={HomeScreen}
-                options={{ title: 'Reporte de Incidentes' }}
-              />
-              <Stack.Screen
-                name="NewReport"
-                component={NewReportScreen}
-                options={{ title: 'Nuevo Reporte' }}
-              />
-            </Stack.Navigator>
-          </NavigationContainer>
-        </View>
+        <NavigationContainer>
+          <Stack.Navigator
+            initialRouteName="Home"
+            screenOptions={{
+              headerStyle: {
+                backgroundColor: theme.colors.primary,
+              },
+              headerTintColor: '#fff',
+              headerTitleStyle: {
+                fontWeight: 'bold',
+              },
+            }}
+          >
+            <Stack.Screen
+              name="Home"
+              component={HomeScreen}
+              options={{ title: 'Reporte de Incidentes' }}
+            />
+            <Stack.Screen
+              name="NewReport"
+              component={NewReportScreen}
+              options={{ title: 'Nuevo Reporte' }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
       </SyncProvider>
     </PaperProvider>
   );

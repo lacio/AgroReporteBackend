@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, FlatList, Image } from 'react-native';
+import { View, StyleSheet, ImageBackground, ScrollView, useWindowDimensions } from 'react-native';
 import { Button, Text, Card, ActivityIndicator, Badge } from 'react-native-paper';
 import { useIsFocused } from '@react-navigation/native';
 import { useSync } from '../context/SyncContext'; // Ajusta la ruta si es necesario
@@ -10,15 +10,32 @@ import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { getReports } from '../services/api'; // Importar la función para obtener reportes
 import AsyncStorage from '@react-native-async-storage/async-storage'; // Importar AsyncStorage
 
+const banners = [
+  require('../../assets/banner1.jpg'),
+  require('../../assets/banner2.jpg'),
+  require('../../assets/banner3.jpg'),
+];
+
 const HomeScreen = ({ navigation }) => {
   const [pendingReports, setPendingReports] = useState(0);
   const [reports, setReports] = useState([]); // Estado para almacenar los reportes del servidor
   const [loadingReports, setLoadingReports] = useState(true); // Estado para el indicador de carga
   const [currentUserName, setCurrentUserName] = useState(null); // Estado para el nombre de usuario actual
+  const [currentImageIndex, setCurrentImageIndex] = useState(0); // Estado para la imagen de portada actual
   const { setNotification } = useSync();
   const { isSyncing, syncReports } = useSyncManager(setNotification);
   const isFocused = useIsFocused();
   const isConnected = useNetworkStatus();
+
+  const { height: windowHeight } = useWindowDimensions();
+
+  // Rotación de imágenes de portada
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % banners.length);
+    }, 5000); // 5 segundos por imagen
+    return () => clearInterval(interval);
+  }, []);
 
   const checkPendingReports = useCallback(async () => {
     const reports = await getOfflineReports();
@@ -64,59 +81,50 @@ const HomeScreen = ({ navigation }) => {
 
   const handleManualSync = () => {
     if (isConnected) {
-        syncReports().then(() => {
-            checkPendingReports(); // Actualizar contador después de sincronizar
-        });
+      syncReports().then(() => {
+        checkPendingReports(); // Actualizar contador después de sincronizar
+      });
     } else {
-        setNotification('No hay conexión a internet para sincronizar.');
+      setNotification('No hay conexión a internet para sincronizar.');
     }
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Bienvenido a AgroReporte</Text>
-        <Text style={styles.subtitle}>
-          Reporte cualquier incidente en las instalaciones de forma rápida y sencilla.
-        </Text>
-        <Button
-          mode="contained"
-          icon="plus-circle"
-          style={styles.button}
-          labelStyle={styles.buttonLabel}
-          onPress={() => navigation.navigate('NewReport')}
-        >
-          Crear Nuevo Reporte
-        </Button>
-        <View style={styles.qrContainer}>
-          <Text style={styles.qrText}>Escanea este QR para abrir la app web</Text>
-          <Image
-            style={styles.qrCode}
-            source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://agroreporte-client-18nf4oe7z-fabiolacio-2367s-projects.vercel.app/' }}
-          />
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.containerContent}
+    >
+      <ImageBackground
+        source={banners[currentImageIndex]}
+        style={styles.fullBackground}
+        resizeMode="cover"
+      >
+        <View style={[styles.overlay, { minHeight: windowHeight }]}>
+          <View style={styles.header}>
+            <Text style={styles.brandTitle}>AgroReporte</Text>
+            <View style={styles.divider} />
+            <Text style={styles.brandSubtitle}>Control de Calidad e Incidencias</Text>
+          </View>
+
+          <View style={styles.centerContent}>
+            <Text style={styles.welcomeText}>¿Deseas reportar algo?</Text>
+            <Text style={styles.instructionText}>Agrocentro promueve la prevención, el bienestar y el cuidado del entorno laboral, brindando pautas claras para actuar de forma segura y responsable.</Text>
+
+            <Button
+              mode="contained"
+              icon="plus"
+              style={styles.actionButton}
+              labelStyle={styles.actionButtonLabel}
+              onPress={() => navigation.navigate('NewReport')}
+            >
+              EMPEZAR REPORTE
+            </Button>
+          </View>
+
         </View>
-      </View>
+      </ImageBackground>
 
-      {loadingReports ? (
-        <ActivityIndicator animating={true} size="large" style={{ marginVertical: 10 }} />
-      ) : (
-        <FlatList
-          data={reports}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <Card style={styles.reportCard}>
-              <Card.Title title={item.title || 'Sin título'} subtitle={`Estado: ${item.status}`} />
-              <Card.Content>
-                <Text>Fecha: {new Date(item.timestamp).toLocaleDateString()}</Text>
-                {/* Puedes añadir más detalles del reporte aquí si lo deseas */}
-              </Card.Content>
-            </Card>
-          )}
-          ListEmptyComponent={<Text style={styles.emptyListText}>No tienes reportes enviados.</Text>}
-        />
-      )}
-
-      {isSyncing && <ActivityIndicator animating={true} size="large" style={{ marginVertical: 10 }}/>}
+      {isSyncing && <ActivityIndicator animating={true} size="large" style={{ marginVertical: 10 }} />}
 
       {pendingReports > 0 && (
         <Card style={styles.syncCard}>
@@ -138,68 +146,99 @@ const HomeScreen = ({ navigation }) => {
           </Card.Actions>
         </Card>
       )}
-    </View>
+    </ScrollView>
   );
+};
+
+const getStatusColor = (status) => {
+  switch (status?.toLowerCase()) {
+    case 'resuelto': return '#4caf50';
+    case 'en proceso': return '#ff9800';
+    default: return '#757575';
+  }
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
-  content: {
-    justifyContent: 'center',
+  fullBackground: {
+    width: '100%',
+  },
+  containerContent: {
+    flexGrow: 1,
+  },
+  overlay: {
+    backgroundColor: 'rgba(0,0,0,0.3)', // Reducido un poco para que se aprecie mejor la imagen
+    padding: 30,
+    paddingBottom: 40,
+    justifyContent: 'space-between',
+  },
+  header: {
+    alignItems: 'flex-start',
+    marginTop: 60,
+    paddingLeft: 50, // Movido 30px más a la derecha (total 50px)
+  },
+  brandTitle: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
+  },
+  divider: {
+    width: 40,
+    height: 3,
+    backgroundColor: '#8bc34a',
+    marginVertical: 10,
+    borderRadius: 2,
+  },
+  brandSubtitle: {
+    fontSize: 12,
+    color: '#eee',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    textAlign: 'left',
+  },
+  centerContent: {
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 40,
+    marginTop: 40, // Añadido un poco de margen superior
   },
-  title: {
+  welcomeText: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  qrContainer: {
-    alignItems: 'center',
-    marginTop: 30,
-  },
-  qrText: {
-    fontSize: 16,
-    color: '#666',
+    color: '#fff',
     marginBottom: 10,
   },
-  qrCode: {
-    width: 200,
-    height: 200,
+  instructionText: {
+    fontSize: 15,
+    color: '#fff', // Blanco puro para mejor contraste
+    textAlign: 'center',
+    marginBottom: 40,
+    lineHeight: 22,
+    paddingHorizontal: 10,
+    opacity: 0.9,
   },
-  button: {
+  actionButton: {
+    backgroundColor: '#388e3c', // Un verde vibrante
     paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 30,
+    paddingHorizontal: 30,
+    borderRadius: 12, // Bordes menos redondeados para look moderno
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
   },
-  buttonLabel: {
-    fontSize: 18,
-  },
-  syncCard: {
-    margin: 16,
-    elevation: 4,
-  },
-  reportCard: {
-    marginHorizontal: 16,
-    marginVertical: 8,
-    elevation: 2,
-  },
-  emptyListText: {
-    textAlign: 'center',
-    marginTop: 20,
+  actionButtonLabel: {
     fontSize: 16,
-    color: '#666',
+    fontWeight: 'bold',
+    color: '#fff',
+    letterSpacing: 1,
   },
 });
 

@@ -1,13 +1,78 @@
 
 import React, { useState } from 'react';
-import { View, Image, StyleSheet, Alert } from 'react-native';
+import { Platform, View, Image, StyleSheet, Alert } from 'react-native';
 import { Button, IconButton, Text } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
+const MAX_BASE64_CHARS = 125000;
+const COMPRESSION_PASSES = [
+  { maxDimension: 800, quality: 0.6 },
+  { maxDimension: 650, quality: 0.5 },
+  { maxDimension: 500, quality: 0.4 },
+  { maxDimension: 400, quality: 0.3 },
+  { maxDimension: 320, quality: 0.2 },
+];
 const MAX_PHOTOS = 5;
 
 const ImageSelector = ({ onImagesChanged }) => {
   const [images, setImages] = useState([]);
+
+  const processImage = async (asset) => {
+    const width = asset.width || 1920;
+    const height = asset.height || 1080;
+    let result = null;
+
+    console.log(`📸 Procesando imagen original: ${width}x${height}`);
+
+    for (let i = 0; i < COMPRESSION_PASSES.length; i++) {
+      const { maxDimension, quality } = COMPRESSION_PASSES[i];
+      const resizeAction = [{
+        resize: width >= height
+          ? { width: Math.min(width, maxDimension) }
+          : { height: Math.min(height, maxDimension) },
+      }];
+
+      try {
+        result = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          resizeAction,
+          {
+            compress: quality,
+            format: ImageManipulator.SaveFormat.JPEG,
+            base64: true,
+          }
+        );
+
+        if (!result || !result.base64) {
+          throw new Error("No se pudo obtener la representación base64 de la imagen.");
+        }
+
+        const base64Length = result.base64.length;
+        const sizeKB = (base64Length * (3 / 4)) / 1024;
+
+        console.log(`⚖️ Pase ${i + 1}: ${sizeKB.toFixed(2)}KB (${maxDimension}px, calidad ${quality})`);
+
+        if (base64Length <= MAX_BASE64_CHARS) {
+          break;
+        }
+      } catch (err) {
+        result = null;
+        console.warn(`Pase ${i + 1} de compresión falló:`, err);
+      }
+    }
+
+    if (!result?.base64 || result.base64.length > MAX_BASE64_CHARS) {
+      throw new Error('La foto no pudo reducirse a un tamaño seguro para el envío.');
+    }
+
+    const cleanBase64 = result.base64.includes('base64,') ? result.base64.split('base64,')[1] : result.base64;
+
+    return {
+      uri: result.uri,
+      base64: `data:image/jpeg;base64,${cleanBase64}`,
+    };
+  };
 
   const pickImage = async (useCamera) => {
     let permissionResult;
@@ -32,20 +97,26 @@ const ImageSelector = ({ onImagesChanged }) => {
 
     const pickerOptions = {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsEditing: Platform.OS !== 'web', // Desactivar edición en Web/Safari para evitar fallos de renderizado
       aspect: [4, 3],
-      quality: 0.5, // Comprimir imagen
-      base64: true, // Incluir base64 para envío a API
+      quality: 0.8,
+      base64: false,
     };
 
     let result = useCamera
       ? await ImagePicker.launchCameraAsync(pickerOptions)
       : await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
-    if (!result.canceled) {
-      const newImages = [...images, result.assets[0]];
-      setImages(newImages);
-      onImagesChanged(newImages);
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      try {
+        const processedImage = await processImage(result.assets[0]);
+        const newImages = [...images, processedImage];
+        setImages(newImages);
+        onImagesChanged(newImages);
+      } catch (error) {
+        console.error('Error procesando imagen:', error);
+        Alert.alert('Error', 'No se pudo procesar la imagen. Intenta otra vez.');
+      }
     }
   };
 

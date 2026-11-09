@@ -9,7 +9,7 @@ export const saveReportOffline = async (reportData) => {
     const offlineReports = await getOfflineReports();
     const reportWithId = {
       ...reportData,
-      offlineId: uuidv4(), // ID único para manejo local
+      offlineId: reportData.clientReportId || uuidv4(), // Usar el ID del cliente si existe
       savedAt: new Date().toISOString(),
     };
     const updatedReports = [...offlineReports, reportWithId];
@@ -32,12 +32,12 @@ export const getOfflineReports = async () => {
 };
 
 export const setOfflineReports = async (reports) => {
-    try {
-        const jsonValue = JSON.stringify(reports);
-        await AsyncStorage.setItem(OFFLINE_REPORTS_KEY, jsonValue);
-    } catch (e) {
-        console.error('Error actualizando reportes offline:', e);
-    }
+  try {
+    const jsonValue = JSON.stringify(reports);
+    await AsyncStorage.setItem(OFFLINE_REPORTS_KEY, jsonValue);
+  } catch (e) {
+    console.error('Error actualizando reportes offline:', e);
+  }
 };
 
 export const clearOfflineReports = async () => {

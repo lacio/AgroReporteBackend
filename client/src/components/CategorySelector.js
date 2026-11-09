@@ -1,12 +1,21 @@
-
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { Button, Portal, Modal, List, Text } from 'react-native-paper';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { TouchableRipple, Portal, Modal, List, Text, useTheme, Icon } from 'react-native-paper';
 import { CATEGORIES } from '../constants/categories';
 
-const CategorySelector = ({ onCategorySelected }) => {
+const CategorySelector = ({ onCategorySelected, selectedCategoryId }) => {
   const [visible, setVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const theme = useTheme();
+
+  React.useEffect(() => {
+    if (selectedCategoryId) {
+      const found = CATEGORIES.find(c => c.id === selectedCategoryId);
+      if (found) setSelectedCategory(found);
+    } else if (!selectedCategoryId) {
+      setSelectedCategory(null);
+    }
+  }, [selectedCategoryId]);
 
   const showModal = () => setVisible(true);
   const hideModal = () => setVisible(false);
@@ -17,18 +26,29 @@ const CategorySelector = ({ onCategorySelected }) => {
     hideModal();
   };
 
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Categoría*</Text>
-      <Button
-        mode="outlined"
+      <TouchableRipple
         onPress={showModal}
-        icon={selectedCategory ? selectedCategory.icon : 'chevron-down'}
-        style={styles.button}
-        contentStyle={styles.buttonContent}
+        style={styles.touchable}
+        rippleColor="rgba(0, 0, 0, .1)"
       >
-        {selectedCategory ? selectedCategory.name : 'Seleccionar categoría'}
-      </Button>
+        <View style={styles.content}>
+          <View style={styles.leftContent}>
+            <Icon
+              source={selectedCategory ? selectedCategory.icon : 'shape-outline'}
+              size={24}
+              color={selectedCategory ? '#2e7d32' : '#757575'}
+            />
+            <Text style={[styles.text, !selectedCategory && styles.placeholder]}>
+              {selectedCategory ? selectedCategory.name : 'Seleccionar categoría'}
+            </Text>
+          </View>
+          <Icon source="chevron-down" size={24} color="#757575" />
+        </View>
+      </TouchableRipple>
 
       <Portal>
         <Modal visible={visible} onDismiss={hideModal} contentContainerStyle={styles.modalContainer}>
@@ -38,7 +58,9 @@ const CategorySelector = ({ onCategorySelected }) => {
                 <List.Item
                   key={category.id}
                   title={category.name}
-                  left={() => <List.Icon icon={category.icon} color={category.color} />}
+                  description={category.description}
+                  descriptionNumberOfLines={4}
+                  left={props => <List.Icon {...props} icon={category.icon} color={category.color} />}
                   onPress={() => handleSelect(category)}
                 />
               ))}
@@ -61,11 +83,45 @@ const styles = StyleSheet.create({
   },
   button: {
     borderWidth: 1,
-    borderColor: '#888',
-    paddingVertical: 5,
+    borderColor: '#757575',
+    backgroundColor: '#fff',
+    borderRadius: 4,
   },
   buttonContent: {
+    height: 50,
     justifyContent: 'flex-start',
+  },
+  buttonLabel: {
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  touchable: {
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#757575',
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    height: 50,
+  },
+  leftContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 8,
+  },
+  text: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 12,
+  },
+  placeholder: {
+    color: '#757575',
   },
   modalContainer: {
     backgroundColor: 'white',
