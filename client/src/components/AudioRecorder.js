@@ -1,15 +1,47 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, Platform, Animated } from 'react-native';
-import { Text, Button, Card, ActivityIndicator, IconButton } from 'react-native-paper';
+import { Text, Button, Card, ActivityIndicator } from 'react-native-paper';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import { parseVoiceReport, checkServerStatus } from '../services/api';
 
 const MAX_DURATION_SECONDS = 60;
+
+// Voz en AAC mono 16 kHz / 32 kbps dentro de .m4a: ~240 KB por minuto y un formato
+// que Gemini acepta como audio/mp4. (El preset LOW_QUALITY graba .3gp/AMR en Android
+// y .caf en iOS, que no corresponden al MIME audio/mp4 que enviamos.)
+const VOICE_RECORDING_OPTIONS = {
+  isMeteringEnabled: false,
+  android: {
+    extension: '.m4a',
+    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 32000,
+  },
+  ios: {
+    extension: '.m4a',
+    outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+    audioQuality: Audio.IOSAudioQuality.MEDIUM,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 32000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {
+    mimeType: 'audio/webm',
+    bitsPerSecond: 16000,
+  },
+};
 
 const AudioRecorder = ({ onParsedData, onError }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error', text: '' }
 
   // Referencias para grabación móvil y web
   const nativeRecordingRef = useRef(null);
@@ -73,40 +105,60 @@ const AudioRecorder = ({ onParsedData, onError }) => {
   };
 
   const startRecording = async () => {
+    setFeedback(null);
+    // Despertar la Cloud Function mientras el usuario habla, para que el arranque
+    // en frío (varios segundos) no se sume a la espera al enviar el audio.
+    checkServerStatus().catch(() => {});
     try {
       if (Platform.OS === 'web') {
         if (!navigator?.mediaDevices?.getUserMedia) {
-          onError && onError('Tu navegador no soporta grabación de audio.');
+          const msg = 'Tu navegador no tiene soporte para micrófono.';
+          setFeedback({ type: 'error', text: msg });
+          onError && onError(msg);
           return;
         }
+
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mediaRecorder = new MediaRecorder(stream);
+        
+        let chosenMime = 'audio/webm';
+        if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+          if (MediaRecorder.isTypeSupported('audio/webm')) {
+            chosenMime = 'audio/webm';
+          } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            chosenMime = 'audio/mp4';
+          }
+        }
+
+        const mediaRecorder = new MediaRecorder(stream, chosenMime ? { mimeType: chosenMime, audioBitsPerSecond: 16000 } : undefined);
         webAudioChunksRef.current = [];
 
         mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
+          if (event.data && event.data.size > 0) {
             webAudioChunksRef.current.push(event.data);
           }
         };
 
         mediaRecorder.onstop = async () => {
           stream.getTracks().forEach((track) => track.stop());
-          const audioBlob = new Blob(webAudioChunksRef.current, { type: 'audio/webm' });
+          const actualMime = mediaRecorder.mimeType ? mediaRecorder.mimeType.split(';')[0] : chosenMime;
+          const audioBlob = new Blob(webAudioChunksRef.current, { type: actualMime });
           const reader = new FileReader();
           reader.readAsDataURL(audioBlob);
           reader.onloadend = () => {
             const base64Data = reader.result;
-            processAudio(base64Data, 'audio/webm');
+            processAudio(base64Data, actualMime);
           };
         };
 
         webMediaRecorderRef.current = mediaRecorder;
-        mediaRecorder.start();
+        mediaRecorder.start(1000); // Fragmentos cada 1s (menos overhead que 250ms)
       } else {
         // En Android / iOS
         const permission = await Audio.requestPermissionsAsync();
         if (permission.status !== 'granted') {
-          onError && onError('Se necesita permiso de micrófono para grabar notas de voz.');
+          const msg = 'Se requiere permiso de micrófono para grabar.';
+          setFeedback({ type: 'error', text: msg });
+          onError && onError(msg);
           return;
         }
 
@@ -115,9 +167,7 @@ const AudioRecorder = ({ onParsedData, onError }) => {
           playsInSilentModeIOS: true,
         });
 
-        const { recording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
+        const { recording } = await Audio.Recording.createAsync(VOICE_RECORDING_OPTIONS);
         nativeRecordingRef.current = recording;
       }
 
@@ -125,7 +175,9 @@ const AudioRecorder = ({ onParsedData, onError }) => {
       startTimer();
     } catch (err) {
       console.error('Error al iniciar grabación:', err);
-      onError && onError('No se pudo acceder al micrófono: ' + (err.message || err));
+      const msg = 'No se pudo acceder al micrófono: ' + (err.message || err);
+      setFeedback({ type: 'error', text: msg });
+      onError && onError(msg);
       stopTimer();
       setIsRecording(false);
     }
@@ -158,7 +210,9 @@ const AudioRecorder = ({ onParsedData, onError }) => {
       }
     } catch (err) {
       console.error('Error al detener grabación:', err);
-      onError && onError('Error al guardar el audio: ' + (err.message || err));
+      const msg = 'Error al guardar audio: ' + (err.message || err);
+      setFeedback({ type: 'error', text: msg });
+      onError && onError(msg);
     }
   };
 
@@ -182,19 +236,31 @@ const AudioRecorder = ({ onParsedData, onError }) => {
 
   const processAudio = async (base64Audio, mimeType) => {
     setIsProcessing(true);
+    setFeedback(null);
     try {
-      const { parseVoiceReport } = require('../services/api');
+      console.log('📡 Enviando nota de voz al servidor (MIME:', mimeType, ')...');
       const response = await parseVoiceReport(base64Audio, mimeType);
 
       if (response.data && response.data.success && response.data.data) {
+        setFeedback({
+          type: 'success',
+          text: '✨ ¡Ticket autocompletado con éxito por la IA!',
+        });
         onParsedData && onParsedData(response.data.data, base64Audio);
       } else {
-        onError && onError('La IA no pudo interpretar el audio. Por favor intenta de nuevo.');
+        const msg = 'La IA no pudo interpretar el audio. Por favor intenta hablar más cerca.';
+        setFeedback({ type: 'error', text: msg });
+        onError && onError(msg);
       }
     } catch (err) {
       console.error('Error al procesar audio en servidor:', err);
-      const msg = err.response?.data?.details || err.message || 'Error de conexión con el servidor.';
-      onError && onError('Error al procesar audio con IA: ' + msg);
+      const msg =
+        err.response?.data?.details ||
+        err.response?.data?.error ||
+        err.message ||
+        'Error de comunicación con el servidor.';
+      setFeedback({ type: 'error', text: 'Error: ' + msg });
+      onError && onError('Error al procesar con IA: ' + msg);
     } finally {
       setIsProcessing(false);
       setRecordSeconds(0);
@@ -276,6 +342,24 @@ const AudioRecorder = ({ onParsedData, onError }) => {
             >
               Presiona para Hablar
             </Button>
+          </View>
+        )}
+
+        {feedback && (
+          <View
+            style={[
+              styles.feedbackBanner,
+              feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
+            ]}
+          >
+            <Text
+              style={[
+                styles.feedbackText,
+                feedback.type === 'success' ? styles.feedbackTextSuccess : styles.feedbackTextError,
+              ]}
+            >
+              {feedback.text}
+            </Text>
           </View>
         )}
       </Card.Content>
@@ -384,6 +468,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2e7d32',
     textAlign: 'center',
+  },
+  feedbackBanner: {
+    marginTop: 10,
+    padding: 8,
+    borderRadius: 6,
+  },
+  feedbackSuccess: {
+    backgroundColor: '#e8f5e9',
+  },
+  feedbackError: {
+    backgroundColor: '#ffebee',
+  },
+  feedbackText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  feedbackTextSuccess: {
+    color: '#2e7d32',
+  },
+  feedbackTextError: {
+    color: '#c62828',
   },
 });
 

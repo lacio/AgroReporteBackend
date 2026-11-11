@@ -7,8 +7,44 @@ if (apiKey) {
   ai = new GoogleGenAI({ apiKey });
 }
 
+// Modelos medidos el 2026-11-11 con un audio de ~24 s:
+//   gemini-3.5-flash-lite / gemini-3.1-flash-lite -> 2-4 s (con picos ocasionales y algún 503)
+//   gemini-3.8-flash                              -> más de 60 s (NO usar para esto)
+// Cada modelo acepta parámetros de "thinking" distintos; uno inválido devuelve 400.
+const MODELS = [
+  { name: 'gemini-3.5-flash-lite', config: {} },
+  { name: 'gemini-3.1-flash-lite', config: { thinkingConfig: { thinkingLevel: 'minimal' } } }
+];
+
+// Si el modelo principal no respondió en este tiempo (o falló), se lanza el
+// segundo en paralelo y se usa la primera respuesta válida.
+const HEDGE_DELAY_MS = 4000;
+const REQUEST_TIMEOUT_MS = 25000;
+
+function raceModels(run) {
+  const controllers = MODELS.map(() => new AbortController());
+  const primary = run(MODELS[0], controllers[0].signal);
+  const secondary = new Promise((resolve, reject) => {
+    let started = false;
+    const start = () => {
+      clearTimeout(timer);
+      if (started) return;
+      started = true;
+      run(MODELS[1], controllers[1].signal).then(resolve, reject);
+    };
+    const timer = setTimeout(start, HEDGE_DELAY_MS);
+    primary.then(() => clearTimeout(timer), start);
+  });
+
+  return Promise.any([primary, secondary])
+    .catch((agg) => {
+      throw (agg.errors && agg.errors[0]) || agg;
+    })
+    .finally(() => controllers.forEach((c) => c.abort()));
+}
+
 /**
- * Procesa un archivo de audio (en Base64) usando Gemini 3.8 Flash
+ * Procesa un archivo de audio (en Base64) usando Gemini Flash
  * y extrae la información del ticket categorizada automáticamente.
  */
 async function parseVoiceReport(audioBase64, mimeType = 'audio/mp4') {
@@ -22,43 +58,32 @@ async function parseVoiceReport(audioBase64, mimeType = 'audio/mp4') {
 
   // Limpiar prefijo data:audio/...;base64, si viene incluido
   let cleanBase64 = audioBase64;
-  let detectedMime = mimeType;
+  let detectedMime = mimeType || 'audio/mp4';
   if (audioBase64.includes(';base64,')) {
     const parts = audioBase64.split(';base64,');
     detectedMime = parts[0].replace('data:', '') || detectedMime;
     cleanBase64 = parts[1];
   }
 
-  const prompt = `Eres el asistente inteligente de AgroReporte para la empresa Agrocentro S.A.
-Tu labor es escuchar el audio grabado por un colaborador en el campo o instalaciones y convertirlo en un ticket estructurado de incidente.
+  // Normalizar MIME type: quitar parámetros como ;codecs=opus que Gemini rechaza
+  if (detectedMime) {
+    detectedMime = detectedMime.split(';')[0].trim().toLowerCase();
+    if (detectedMime.includes('webm')) detectedMime = 'audio/webm';
+    else if (detectedMime.includes('mp4') || detectedMime.includes('m4a') || detectedMime.includes('aac')) detectedMime = 'audio/mp4';
+    else if (detectedMime.includes('wav')) detectedMime = 'audio/wav';
+    else if (detectedMime.includes('ogg')) detectedMime = 'audio/ogg';
+    else if (detectedMime.includes('3gpp') || detectedMime.includes('3gp')) detectedMime = 'audio/3gpp';
+  }
 
-Reglas de extracción:
-1. "title": Un título descriptivo, claro y conciso (máximo 60 caracteres). Ej: "Gotera en techo de Almacenera", "Falla en tomacorriente de comedor".
-2. "predio": Debe ser EXACTAMENTE uno de estos 6 predios si se menciona explícitamente o por contexto:
-   - "Oficina Central"
-   - "Almacenera"
-   - "San Juliano"
-   - "Los Tamarindos"
-   - "Media Luna"
-   - "Los Troncos"
-   Si no se menciona ningún predio, devuelve "".
-3. "location": Lugar o área específica dentro del predio (ej: "Baño de mujeres", "Galpón 2", "Comedor", "Taller de maquinaria", "Oficina de compras"). Si no se especifica, usa lo más cercano mencionado o deja "".
-4. "category": Debe ser EXACTAMENTE uno de los siguientes IDs:
-   - "servicios-generales" (infraestructura, agua, plomería, goteras, techos, paredes, electricidad, luces, aires acondicionados, limpieza, áreas comunes)
-   - "tecnologia" (computadoras, impresoras, sistemas, red, wifi, software, cables de red, equipos)
-   - "ssma" (seguridad y salud en el trabajo, medio ambiente, riesgos de caídas, cables expuestos peligrosos, extintores, falta de EPP, accidentes, derrames)
-   - "recursos-humanos" (clima laboral, bienestar laboral, conductas, personal)
-   - "otros" (si no encaja en las anteriores)
-5. "priority": Debe ser:
-   - "alta" (si hay peligro inmediato para personas, riesgo de daño grave a mercadería/equipos o paralización de operaciones)
-   - "normal" (requiere pronta atención pero no frena operaciones)
-   - "baja" (mantenimiento menor o estético)
-6. "description": Transcripción fiel, fluida y bien redactada en español de lo que relató el usuario en el audio. Corrige muletillas y dale buena puntuación.
+  const prompt = `Extrae un ticket de incidente del audio. Empresa: Agrocentro S.A.
+Predios válidos (exacto): "Oficina Central", "Almacenera", "San Juliano", "Los Tamarindos", "Media Luna", "Los Troncos". Si no se menciona, devuelve "".
+Categorías (ID exacto): "servicios-generales" (infra/electricidad/agua/limpieza), "tecnologia" (IT/equipos/red), "ssma" (seguridad/salud/medio ambiente), "recursos-humanos" (personal/clima laboral), "otros".
+Prioridades: "alta" (peligro/paralización), "normal" (pronta atención), "baja" (mantenimiento menor).
+title: máx 60 caracteres. description: transcripción corregida en español.
+location: área específica dentro del predio mencionado o "".
+Responde JSON puro, sin texto adicional.`;
 
-Responde únicamente con el JSON estructurado.`;
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
+  const generateOptions = {
     contents: [
       {
         role: 'user',
@@ -76,6 +101,9 @@ Responde únicamente con el JSON estructurado.`;
       }
     ],
     config: {
+      // Holgado: un audio de 60 s genera ~400 tokens; si se corta, el JSON queda inválido
+      maxOutputTokens: 1024,
+      temperature: 0,
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
@@ -83,7 +111,7 @@ Responde únicamente con el JSON estructurado.`;
           title: { type: Type.STRING },
           predio: {
             type: Type.STRING,
-            enum: ['Oficina Central', 'Almacenera', 'San Juliano', 'Los Tamarindos', 'Media Luna', 'Los Troncos', '']
+            description: 'Debe ser uno de los predios: Oficina Central, Almacenera, San Juliano, Los Tamarindos, Media Luna, Los Troncos. Si no se menciona ninguno, escribe "".'
           },
           location: { type: Type.STRING },
           category: {
@@ -99,9 +127,47 @@ Responde únicamente con el JSON estructurado.`;
         required: ['title', 'predio', 'location', 'category', 'priority', 'description']
       }
     }
+  };
+
+  const startedAt = Date.now();
+  const parsed = await raceModels(async (model, signal) => {
+    try {
+      const response = await ai.models.generateContent({
+        model: model.name,
+        contents: generateOptions.contents,
+        config: {
+          ...generateOptions.config,
+          ...model.config,
+          abortSignal: signal,
+          httpOptions: { timeout: REQUEST_TIMEOUT_MS }
+        }
+      });
+      if (!response || !response.text) {
+        throw new Error('Respuesta vacía del modelo.');
+      }
+      const result = JSON.parse(response.text);
+      console.log(`⏱️ Audio procesado con ${model.name} en ${Date.now() - startedAt} ms`);
+      return result;
+    } catch (err) {
+      if (!signal.aborted) {
+        console.warn(`⚠️ ${model.name} falló a los ${Date.now() - startedAt} ms: ${err.message}`);
+      }
+      throw err;
+    }
   });
 
-  const parsed = JSON.parse(response.text);
+  const validPredios = [
+    'Oficina Central',
+    'Almacenera',
+    'San Juliano',
+    'Los Tamarindos',
+    'Media Luna',
+    'Los Troncos'
+  ];
+  if (!validPredios.includes(parsed.predio)) {
+    parsed.predio = '';
+  }
+
   return parsed;
 }
 

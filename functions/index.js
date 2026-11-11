@@ -1,6 +1,9 @@
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const { onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { getFirestore } = require("firebase-admin/firestore");
+
 const { initializeApp } = require("firebase-admin/app");
 const functions = require("firebase-functions"); // Requerido para fallbacks de config
 const express = require('express');
