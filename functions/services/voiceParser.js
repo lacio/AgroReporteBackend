@@ -7,40 +7,89 @@ if (apiKey) {
   ai = new GoogleGenAI({ apiKey });
 }
 
-// Modelos medidos el 2026-11-11 con un audio de ~24 s:
-//   gemini-3.5-flash-lite / gemini-3.1-flash-lite -> 2-4 s (con picos ocasionales y algún 503)
-//   gemini-3.8-flash                              -> más de 60 s (NO usar para esto)
-// Cada modelo acepta parámetros de "thinking" distintos; uno inválido devuelve 400.
+// Modelos medidos el 2026-11-11 con un audio de ~24 s. Todos responden en 2-4 s
+// cuando están disponibles, pero Google devuelve 503 ("high demand") con frecuencia,
+// a veces en varios modelos a la vez; por eso se encadenan cuatro.
+//   gemini-3.8-flash tarda más de 60 s: NO usar para esto.
+// Cada modelo acepta niveles de "thinking" distintos; uno inválido devuelve 400.
 const MODELS = [
   { name: 'gemini-3.5-flash-lite', config: {} },
-  { name: 'gemini-3.1-flash-lite', config: { thinkingConfig: { thinkingLevel: 'minimal' } } }
+  { name: 'gemini-3.1-flash-lite', config: { thinkingConfig: { thinkingLevel: 'minimal' } } },
+  { name: 'gemini-3.5-flash', config: { thinkingConfig: { thinkingLevel: 'minimal' } } },
+  { name: 'gemini-3.6-flash', config: { thinkingConfig: { thinkingLevel: 'low' } } }
 ];
 
-// Si el modelo principal no respondió en este tiempo (o falló), se lanza el
-// segundo en paralelo y se usa la primera respuesta válida.
-const HEDGE_DELAY_MS = 4000;
-const REQUEST_TIMEOUT_MS = 25000;
+// El siguiente modelo se lanza en paralelo cuando el anterior falla o lleva este
+// tiempo sin responder. Gana la primera respuesta válida.
+const HEDGE_DELAY_MS = 3000;
+const REQUEST_TIMEOUT_MS = 12000;
+// Si todos fallan (p. ej. 503 generalizado) se repite la ronda completa.
+const MAX_ROUNDS = 2;
+const ROUND_BACKOFF_MS = 1500;
 
-function raceModels(run) {
-  const controllers = MODELS.map(() => new AbortController());
-  const primary = run(MODELS[0], controllers[0].signal);
-  const secondary = new Promise((resolve, reject) => {
-    let started = false;
-    const start = () => {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function raceOnce(run) {
+  return new Promise((resolve, reject) => {
+    const controllers = [];
+    const errors = [];
+    let next = 0;
+    let pending = 0;
+    let settled = false;
+    let timer = null;
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      if (started) return;
-      started = true;
-      run(MODELS[1], controllers[1].signal).then(resolve, reject);
+      controllers.forEach((c) => c.abort());
+      fn(value);
     };
-    const timer = setTimeout(start, HEDGE_DELAY_MS);
-    primary.then(() => clearTimeout(timer), start);
-  });
 
-  return Promise.any([primary, secondary])
-    .catch((agg) => {
-      throw (agg.errors && agg.errors[0]) || agg;
-    })
-    .finally(() => controllers.forEach((c) => c.abort()));
+    const launch = () => {
+      clearTimeout(timer);
+      if (settled || next >= MODELS.length) return;
+      const model = MODELS[next++];
+      const controller = new AbortController();
+      controllers.push(controller);
+      pending++;
+      run(model, controller.signal).then(
+        (result) => finish(resolve, result),
+        (err) => {
+          errors.push(err);
+          pending--;
+          if (next < MODELS.length) launch();
+          else if (pending === 0) finish(reject, errors[0]);
+        }
+      );
+      if (next < MODELS.length) timer = setTimeout(launch, HEDGE_DELAY_MS);
+    };
+
+    launch();
+  });
+}
+
+async function raceModels(run) {
+  let lastError;
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    try {
+      return await raceOnce(run);
+    } catch (err) {
+      lastError = err;
+      if (round < MAX_ROUNDS) {
+        console.warn(`⚠️ Ronda ${round} sin respuesta de ningún modelo; reintentando...`);
+        await sleep(ROUND_BACKOFF_MS);
+      }
+    }
+  }
+  const overloaded = /503|UNAVAILABLE|high demand|overloaded/i.test(String(lastError && lastError.message));
+  const friendly = new Error(
+    overloaded
+      ? 'El servicio de IA está saturado en este momento. Espera unos segundos y vuelve a intentar, o llena el formulario manualmente.'
+      : 'No se pudo procesar el audio con la IA. Intenta de nuevo o llena el formulario manualmente.'
+  );
+  friendly.cause = lastError;
+  throw friendly;
 }
 
 /**
