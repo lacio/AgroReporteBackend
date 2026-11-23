@@ -124,7 +124,7 @@ transporter.verify(function (error, success) {
 const recipientMap = {
   'servicios-generales': process.env.EMAIL_SERVICIOS_GENERALES || 'asandoval@agrocentro.com.bo',
   'tecnologia': 'fabio.lacio@agrocentro.com.bo',
-  'ssma': 'asandoval@agrocentro.com.bo',
+  'ssma': process.env.EMAIL_SSMA || 'vlazarte@agrocentro.com.bo',
   'otros': 'fabio.lacio@agrocentro.com.bo', // Opcional: un destinatario por defecto para 'Otros'
 };
 
